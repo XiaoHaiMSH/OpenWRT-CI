@@ -59,3 +59,41 @@ jobs:
       WRT_SOURCE: ${{matrix.SOURCE}}
       #插件调整
       WRT_PACKAGE: ${{inputs.PACKAGE}}
+
+  #发布软件源：两个平台都编译成功才发布，避免整站覆盖时丢掉另一个平台的软件源
+  publish:
+    name: Publish Feed
+    needs: config
+    if: ${{ needs.config.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: feed-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout Projects
+        uses: actions/checkout@main
+
+      - name: Read Feed Name
+        run: |
+          echo "WRT_FEED=$(bash ./Scripts/Feed.sh domain)" >> "$GITHUB_ENV"
+          echo "WRT_PROJECT=$(bash ./Scripts/Feed.sh project)" >> "$GITHUB_ENV"
+
+      - name: Download Feeds
+        if: ${{ env.WRT_FEED != '' }}
+        uses: actions/download-artifact@main
+        with:
+          pattern: feed-*
+          path: ./site/
+          merge-multiple: true
+
+      - name: Generate Index
+        if: ${{ env.WRT_FEED != '' }}
+        run: python3 ./Scripts/Index.py ./site/
+
+      - name: Deploy to Cloudflare Pages
+        if: ${{ env.WRT_FEED != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{secrets.CLOUDFLARE_API_TOKEN}}
+          accountId: ${{secrets.CLOUDFLARE_ACCOUNT_ID}}
+          command: pages deploy ./site/ --project-name=${{env.WRT_PROJECT}} --branch=main --commit-dirty=true

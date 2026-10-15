@@ -103,6 +103,7 @@ jobs:
             echo "WRT_SUBTARGET=$WRT_SUBTARGET"
             echo "WRT_CACHE_TARGET=$WRT_CACHE_TARGET"
             echo "WRT_CACHE_PREFIX=$WRT_CACHE_PREFIX"
+            echo "WRT_FEED=$(bash ./Scripts/Feed.sh domain)"
             echo "WRT_KVER=none"
             echo "WRT_LIST=none"
           } >> "$GITHUB_ENV"
@@ -174,6 +175,8 @@ jobs:
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
 
+          $GITHUB_WORKSPACE/Scripts/Feed.sh check
+
       - name: Download Packages
         run: |
           cd ./wrt/
@@ -207,6 +210,22 @@ jobs:
           echo "======================="
           du -h --max-depth=1
           echo "======================="
+
+      - name: Collect Feed
+        if: ${{ env.WRT_FEED != '' }}
+        run: |
+          cd ./wrt/
+
+          $GITHUB_WORKSPACE/Scripts/Feed.sh collect
+
+      - name: Upload Feed
+        if: ${{ env.WRT_FEED != '' }}
+        uses: actions/upload-artifact@main
+        with:
+          name: feed-${{env.WRT_CONFIG}}
+          path: ./feed/
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Package Firmware
         run: |
