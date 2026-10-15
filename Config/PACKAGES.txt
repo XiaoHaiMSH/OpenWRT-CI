@@ -1,1 +1,4 @@
-
+#软件源专用包：每行一个包名，只编译进软件源，不打进固件
+#以 # 开头的行和空行会被忽略，例如：
+#luci-app-openclash
+#luci-app-homeproxy
