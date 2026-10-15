@@ -37,6 +37,15 @@ if [ -f "$GITHUB_WORKSPACE/Config/PRIVATE.txt" ]; then
 	cat $GITHUB_WORKSPACE/Config/PRIVATE.txt >> ./.config
 fi
 
+#软件源专用包：PACKAGES.txt 里的包只编译为模块(m)，不进固件
+$GITHUB_WORKSPACE/Scripts/Feed.sh apply
+
+#把软件源地址写进固件，开机即可 apk add
+if [ -n "$WRT_FEED" ]; then
+	mkdir -p ./files/etc/apk/repositories.d
+	echo "https://$WRT_FEED/$WRT_CONFIG/packages.adb" > ./files/etc/apk/repositories.d/customfeeds.list
+fi
+
 #手动调整的插件
 if [ -n "$WRT_PACKAGE" ]; then
 	echo -e "$WRT_PACKAGE" >> ./.config
