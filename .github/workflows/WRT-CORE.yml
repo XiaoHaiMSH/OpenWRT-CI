@@ -78,7 +78,8 @@ env:
 jobs:
   core:
     name: ${{inputs.WRT_SOURCE}}
-    runs-on: ubuntu-latest
+    #lede 的 b43-tools 等旧代码与 GCC15+（C23 默认）不兼容，固定 24.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 355
     outputs:
       cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
