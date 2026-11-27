@@ -6,9 +6,12 @@ https://github.com/coolsnowwolf/lede.git
 
 # 编译设备
 
-京东云亚瑟（JDCloud AX1800 Pro / RE-SS-01）：`jdcloud_re-ss-01`
+lede 支持的 qualcommax 平台全部设备，按两个配置编译：
 
-Link NN6000 v2：`link_nn6000-v2`
+- IPQ60XX：京东云亚瑟（`jdcloud_re-ss-01`）、Link NN6000 v1/v2、JDCloud AX6600 等
+- IPQ807X：红米 AX6、小米 AX3600/AX9000、QNAP 301W、Netgear WAX 系列等
+
+设备清单见 `Config/IPQ60XX.txt`、`Config/IPQ807X.txt`，与 lede 源码中的设备定义保持一致。
 
 # 固件简要说明
 

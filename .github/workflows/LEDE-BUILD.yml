@@ -29,12 +29,22 @@ permissions: write-all
 #CI任务
 jobs:
   config:
-    name: IPQ60XX
+    name: ${{matrix.CONFIG}}
+    strategy:
+      fail-fast: false
+      matrix:
+        CONFIG: [IPQ60XX, IPQ807X]
+        include:
+          #编译用户态插件（同架构通用）
+          - CONFIG: IPQ60XX
+            FEED_USER: true
+          - CONFIG: IPQ807X
+            FEED_USER: false
     #调用公用编译核心WRT-CORE.yml
     uses: ./.github/workflows/WRT-CORE.yml
     with:
       #编译配置
-      WRT_CONFIG: IPQ60XX
+      WRT_CONFIG: ${{matrix.CONFIG}}
       #默认主题
       WRT_THEME: argon
       #默认主机名
@@ -57,7 +67,7 @@ jobs:
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       WRT_COMMIT: ${{inputs.HASH}}
       #用户态插件（编译成软件源，不装进固件）
-      WRT_FEED_USER: true
+      WRT_FEED_USER: ${{matrix.FEED_USER}}
       #软件源域名（改成你自己的，Pages 项目名取第一段，如 lede-feed.pages.dev → lede-feed）
       WRT_FEED_HOST: &FEED_HOST 'lede-feed.pages.dev'
       #排除的内核模块
