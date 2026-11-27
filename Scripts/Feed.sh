@@ -1,18 +1,12 @@
 #!/bin/bash
 set -eo pipefail
 
-#修改软件源域名
+#软件源域名（Pages 项目名取第一段，如 lede-feed.pages.dev → lede-feed）
 FEED_HOST="${WRT_FEED_HOST:-}"
-
-EXTRA_FEEDS+=("https://gh-proxy.org/https://github.com/XiaoHaiSly/openwrt-packages/releases/download/snapshots-arm64/packages.adb")
 
 CONF_DIR="$GITHUB_WORKSPACE/Config"
 TOP="$PWD"
-APK="$TOP/staging_dir/host/bin/apk"
-
-extra_feeds() {
-	printf '%s\n' "${EXTRA_FEEDS[@]}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | awk 'NF && !/^#/'
-}
+MKHASH="$TOP/staging_dir/host/bin/mkhash"
 
 feed_ready() {
 	[ -n "$FEED_HOST" ]
@@ -36,8 +30,9 @@ normalize_packages() {
 }
 
 make_index() {
-	find "$1" -maxdepth 1 -name '*.apk' -size +25M -print -delete | sed 's/^/too large, skipped on Pages: /'
-	( cd "$1" && "$APK" mkndx --root "$TOP" --keys-dir "$TOP" --allow-untrusted --output packages.adb ./*.apk )
+	local DIR="$1"
+	( cd "$DIR" && MKHASH="$MKHASH" "$TOP/scripts/ipkg-make-index.sh" . > Packages 2>/dev/null )
+	gzip -9nc "$DIR/Packages" > "$DIR/Packages.gz"
 }
 
 case "$1" in
@@ -64,75 +59,60 @@ collect)
 
 	KDIR="$OUT/kmods/$WRT_SUBTARGET"
 	mkdir -p "$KDIR"
-	cp -f bin/targets/*/*/packages/*.apk "$KDIR"/
+	cp -f bin/targets/*/*/packages/*.ipk "$KDIR"/
 	VM=$(find build_dir -maxdepth 4 -name .vermagic -path '*linux-*' | head -n 1)
 	[ -n "$VM" ] || { echo "ERROR: .vermagic not found"; exit 1; }
 	cat "$VM" > "$KDIR/vermagic"
 	make_index "$KDIR"
-	echo "kmods: $(ls "$KDIR"/*.apk | wc -l) packages, vermagic $(cat "$KDIR/vermagic")"
+	echo "kmods: $(ls "$KDIR"/*.ipk | wc -l) packages, vermagic $(cat "$KDIR/vermagic")"
 
 	if [ "$WRT_FEED_USER" = "true" ]; then
 		ARCH=$(grep -oP '^CONFIG_TARGET_ARCH_PACKAGES="\K[^"]+' .config)
 		UDIR="$OUT/packages/$ARCH"
-		mkdir -p "$UDIR" ./tmp
+		mkdir -p "$UDIR"
+		WANT=$(mktemp)
 		{
 			grep -oP '^CONFIG_PACKAGE_\K[^=]+(?==m$)' .config || true
 			normalize_packages | grep -oP '^CONFIG_PACKAGE_\K[^=]+(?==m$)' || true
-		} | sort -u > ./tmp/feed-m.txt
-		python3 - ./tmp/feed-m.txt "$APK" "$UDIR" bin/packages/"$ARCH"/*/ <<'PY'
-import json, os, shutil, subprocess, sys
-mfile, apk, dst = sys.argv[1:4]
-want = set(open(mfile).read().split())
-n = 0
-for src in sys.argv[4:]:
-    adb = os.path.join(src, "packages.adb")
-    if not os.path.exists(adb):
-        continue
-    data = json.loads(subprocess.check_output([apk, "adbdump", "--format", "json", adb]))
-    pkgs = data["packages"] if isinstance(data, dict) else data
-    for p in pkgs:
-        name = p["name"]
-        base = name
-        for t in p.get("tags", []):
-            if t.startswith("openwrt:abiversion="):
-                abi = t.split("=")[-1]
-                if base.endswith(abi):
-                    base = base[: -len(abi)]
-        if base in want or name in want:
-            f = os.path.join(src, "%s-%s.apk" % (name, p["version"]))
-            if os.path.exists(f):
-                shutil.copy2(f, dst)
-                n += 1
-print("userspace: %d packages" % n)
-PY
-		if ls "$UDIR"/*.apk >/dev/null 2>&1; then
+		} | sort -u > "$WANT"
+		N=0
+		for IPK in bin/packages/"$ARCH"/*/*.ipk; do
+			[ -f "$IPK" ] || continue
+			NAME=$(basename "$IPK")
+			NAME=${NAME%%_*}
+			if grep -qxF "$NAME" "$WANT"; then
+				cp -f "$IPK" "$UDIR"/
+				N=$((N + 1))
+			fi
+		done
+		rm -f "$WANT"
+		if ls "$UDIR"/*.ipk >/dev/null 2>&1; then
 			make_index "$UDIR"
 		else
 			echo "WARNING: no userspace package collected, check Config/PACKAGES.txt"
 			rmdir "$UDIR" || true
 		fi
+		echo "userspace: $N packages"
 	fi
 	;;
 
 firmware)
-	if ! feed_ready && [ -z "$(extra_feeds)" ]; then
+	if ! feed_ready; then
 		echo "no feed configured, skip writing feed into firmware"; exit 0
 	fi
-	if feed_ready; then
-		[ -n "$(feed_tag)" ] || { echo "ERROR: WRT_HASH not set"; exit 1; }
-		ARCH=$(grep -oP '^CONFIG_TARGET_ARCH_PACKAGES="\K[^"]+' .config)
-		URL="https://$(feed_tag).$(feed_host)"
-	fi
-	LIST="files/etc/apk/repositories.d/extra-feeds.list"
-	mkdir -p files/etc/apk/repositories.d
+	[ -n "$(feed_tag)" ] || { echo "ERROR: WRT_HASH not set"; exit 1; }
+	ARCH=$(grep -oP '^CONFIG_TARGET_ARCH_PACKAGES="\K[^"]+' .config)
+	URL="https://$(feed_tag).$(feed_host)"
+	CONF="files/etc/opkg/customfeeds.conf"
+	mkdir -p files/etc/opkg
 	{
-		extra_feeds
-		if feed_ready; then
-			echo "$URL/packages/$ARCH/packages.adb"
-			echo "$URL/kmods/$WRT_SUBTARGET/packages.adb"
+		echo "# Firmware kmod and package feed"
+		echo "src/gz custom_kmods $URL/kmods/$WRT_SUBTARGET"
+		if [ "$WRT_FEED_USER" = "true" ]; then
+			echo "src/gz custom_packages $URL/packages/$ARCH"
 		fi
-	} > "$LIST"
-	cat "$LIST"
+	} > "$CONF"
+	cat "$CONF"
 	;;
 
 project)

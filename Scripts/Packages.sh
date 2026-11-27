@@ -148,8 +148,3 @@ UPDATE_VERSION() {
 if [ -f "$GITHUB_WORKSPACE/Scripts/PRIVATE.sh" ]; then
 	source "$GITHUB_WORKSPACE/Scripts/PRIVATE.sh"
 fi
-
-# apk-tools 补丁
-if [ -f "$GITHUB_WORKSPACE/Scripts/ApkPatch.sh" ]; then
-	source "$GITHUB_WORKSPACE/Scripts/ApkPatch.sh"
-fi

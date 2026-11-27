@@ -74,7 +74,7 @@ jobs:
         run: |
           {
             echo "<!doctype html><meta charset=\"utf-8\"><title>Feed $FEED_TAG</title><h1>Feed $FEED_TAG</h1><ul>"
-            find public -name '*.adb' | sort | while read -r F; do
+            find public -name 'Packages.gz' | sort | while read -r F; do
               echo "<li><a href=\"/${F#public/}\">${F#public/}</a></li>"
             done
             echo '</ul>'
